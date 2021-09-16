@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"encoding/gob"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 )
 
 const (
-	matchLimit               = 5000
 	manifestFilename         = "metadata.gob"
 	excludedFileJsonFilename = "excluded_files.json"
 	filePeekSize             = 2048
@@ -48,6 +46,7 @@ type SearchOptions struct {
 	ExcludeFileRegexp string
 	Offset            int
 	Limit             int
+	MaxResults        int
 }
 
 type Match struct {
@@ -198,6 +197,11 @@ func (n *Index) Search(pat string, opt *SearchOptions) (*SearchResponse, error) 
 			continue
 		}
 
+		// if we already have more results than the limit on this index, skip this file
+		if opt.MaxResults > 0 && matchesCollected >= opt.MaxResults {
+			continue
+		}
+
 		filesOpened++
 		if err := g.grep2File(filepath.Join(n.Ref.dir, "raw", name), re, int(opt.LinesOfContext),
 			func(line []byte, lineno int, before [][]byte, after [][]byte) (bool, error) {
@@ -215,8 +219,8 @@ func (n *Index) Search(pat string, opt *SearchOptions) (*SearchResponse, error) 
 					After:      toStrings(after),
 				})
 
-				if matchesCollected > matchLimit {
-					return false, fmt.Errorf("search exceeds limit on matches: %d", matchLimit)
+				if opt.MaxResults > 0 && matchesCollected >= opt.MaxResults {
+					return false, nil
 				}
 
 				return true, nil
